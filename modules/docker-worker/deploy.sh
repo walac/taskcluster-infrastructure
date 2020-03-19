@@ -8,7 +8,7 @@ export PAPERTRAIL=logs2.papertrailapp.com:22395
 dw_dir=/home/worker/docker-worker/
 
 apt-get update
-apt-get upgrade -yq
+apt-get upgrade -yq --force-yes -o Dpkg::Options::="--force-confnew"
 apt-get install -yq \
   curl \
   apt-transport-https \
