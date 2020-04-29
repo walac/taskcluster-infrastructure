@@ -59,7 +59,7 @@ variable "worker_group_prefix" {
 variable "worker_id_prefix" {
   type        = "string"
   description = "workerId prefix, this will be suffixed with '-<count>'"
-  default     = "machine"
+  default     = "packet"
 }
 
 variable "project" {
