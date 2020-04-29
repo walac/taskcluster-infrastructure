@@ -1,11 +1,10 @@
-#!/bin/bash -vx
+#!/bin/bash -vex
 
 set -vex
 
 export DEBIAN_FRONTEND=noninteractive 
 export V4L2LOOPBACK_VERSION=0.12.0
 export PAPERTRAIL=logs2.papertrailapp.com:22395
-dw_dir=/home/worker/docker-worker/
 
 apt-get update
 apt-get upgrade -yq --force-yes -o Dpkg::Options::="--force-confnew"
@@ -22,10 +21,16 @@ echo `which nologin` >> /etc/shells
 useradd -m -s `which nologin` worker
 usermod -L worker
 
+docker_worker_version="v202004241848"
+dw_dir=/home/worker/docker-worker/
+deploy_dir=/tmp/docker-worker-deploy
+
+git clone -b $docker_worker_version git://github.com/taskcluster/docker-worker-deploy $deploy_dir
+
 groupadd -f docker
-git clone git://github.com/taskcluster/docker-worker $dw_dir
-cd $dw_dir
-git checkout origin/release
+curl -L -o /tmp/docker-worker.tgz "https://github.com/taskcluster/docker-worker-deploy/releases/download/$docker_worker_version/docker-worker.tgz"
+mkdir -p "${dw_dir}"
+tar xvf /tmp/docker-worker.tgz -C "${dw_dir}" --strip-components 1
 
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
 apt-key fingerprint 0EBFCD88J && add-apt-repository \
@@ -62,7 +67,7 @@ apt-get install -yq \
   rsyslog-gnutls \
   python-statsd
 
-bash -vex $dw_dir/deploy/packer/base/scripts/configure_syslog.sh
+bash -vex $deploy_dir/deploy/packer/base/scripts/configure_syslog.sh
 
 git clone git://github.com/facebook/zstd /tmp/zstd
 cd /tmp/zstd
@@ -89,7 +94,7 @@ echo 'exit 0' >> /etc/rc.local
 chmod +x /etc/rc.local
 echo "net.ipv4.tcp_challenge_ack_limit = 999999999" >> /etc/sysctl.conf
 
-cat > $dw_dir/deploy/deploy.json <<EOF
+cat > $deploy_dir/deploy/deploy.json <<EOF
 {
   "debug.level": "",
   "sslKeyLocation": "/tmp/docker-worker-secrets/taskcluster-net/docker-worker-cert.key",
@@ -103,16 +108,20 @@ pip3 install zstandard taskcluster
 apt-get purge -yq apport
 
 curl -o /etc/papertrail-bundle.pem https://papertrailapp.com/tools/papertrail-bundle.pem
-bash -vex /home/worker/docker-worker/deploy/packer/base/scripts/node.sh
+bash -vex $deploy_dir/deploy/packer/base/scripts/node.sh
 npm i -g yarn
 
 cd $dw_dir
 yarn install --frozen-lockfile
-make -j4 -C deploy deploy.tar.gz
-tar -xzvf $dw_dir/deploy/deploy.tar.gz -C / --strip-components=1
+pushd $deploy_dir
+yarn install --frozen-lockfile
+popd
+
+make -j4 -C $deploy_dir/deploy deploy.tar.gz
+tar -xzvf $deploy_dir/deploy/deploy.tar.gz -C / --strip-components=1
 
 curl --fail -L -o /usr/local/bin/start-worker \
-  https://github.com/taskcluster/taskcluster-worker-runner/releases/download/v0.6.0/start-worker-linux-amd64
+  https://github.com/taskcluster/taskcluster/releases/download/v29.1.2/start-worker-linux-amd64
 chmod +x /usr/local/bin/start-worker
 
 systemctl enable docker-worker
